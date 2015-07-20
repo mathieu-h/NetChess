@@ -1,17 +1,70 @@
 #include "ofApp.h"
 
+//-------------------------------------------------------------
+void ofApp::SetNetwork(int mode, string ip, int port)
+{
+	switch(mode) {
+	case 1:
+		LaunchServer(port);
+		break;
+	case 2:
+		JoinServer(ip, port);
+		break;
+	case 3:
+		SpectateGame(ip, port);
+		break;
+	}
+}
+
+//-------------------------------------------------------------
+void ofApp::LaunchServer(int port)
+{
+	isServer = true;
+	isClient = false;
+	isSpectator = false;
+
+	server = new Server(port);
+
+	playerTeam = true;
+	gameStart = false;
+}
+
+//-------------------------------------------------------------
+void ofApp::JoinServer(string ip, int port)
+{
+	isServer = false;
+	isClient = true;
+	isSpectator = false;
+
+	client = new Client(false, ip, port);
+
+	playerTeam = false;
+	gameStart = true;
+}
+
+//-------------------------------------------------------------
+void ofApp::SpectateGame(string ip, int port)
+{
+	isServer = false;
+	isClient = true;
+	isSpectator = true;
+
+	client = new Client(true, ip, port);
+}
+
 //--------------------------------------------------------------
 void ofApp::setup()
 {
-	SelectMode();
+	playerTurn = false;
+
 	InitChessmen();
 
 	selectedChessman = -1;
 
-	if (playerTurn)
-		cout << "It's your turn" << endl;
-	else
-		cout << "Waiting opponent's move" << endl;
+	if (!isSpectator && !playerTurn)
+		cout << "Waiting opponent" << endl;
+
+	selectionImage.loadImage("selection.png");
 }
 
 //--------------------------------------------------------------
@@ -22,6 +75,12 @@ void ofApp::update()
 		for(int i = 0; i < server->buffer.size(); ++i)
 			HandleBuffer(server->buffer[i]);
 		server->buffer.clear();
+		if (!gameStart && server->opponentConnected) {
+			playerTurn = true;
+			gameStart = true;
+		}
+		if (server->socketNewSpectators.size())
+			SendGameStateToNewSpectator();
 	}
 	else if (isClient) {
 		client->Update();
@@ -41,13 +100,14 @@ void ofApp::draw()
 
 	for (int i = 0; i < chessmenBlacks.size(); ++i)
 		chessmenBlacks[i].draw();
-/*
-	if (selectedChessman > -1) {
-		if (playerTeam)
 
+	if (selectedChessman > -1) {
+		ofSetColor(ofColor::white);
+		if (playerTeam)
+			selectionImage.draw(chessmenWhites[selectedChessman].x * 100, chessmenWhites[selectedChessman].y * 100);
 		else
-			
-	}*/
+			selectionImage.draw(chessmenBlacks[selectedChessman].x * 100, chessmenBlacks[selectedChessman].y * 100);
+	}
 }
 
 //--------------------------------------------------------------
@@ -85,11 +145,12 @@ void ofApp::mousePressed(int x, int y, int button)
 				}
 			}
 			else {
-				MoveSelectedChessman(x, y);
+				if (!MoveSelectedChessman(x, y))
+					cout << "invalid move" << endl;
 				selectedChessman = -1;
 			}
 		}
-		else if (button == 1) {
+		else if (button == 2) {
 			selectedChessman = -1;
 		}
 	}
@@ -115,86 +176,34 @@ void ofApp::dragEvent(ofDragInfo dragInfo)
 { 
 }
 
-//-------------------------------------------------------------
-void ofApp::SelectMode()
-{
-	cout << "- 1 : Create game" << endl << "- 2 : Join game" << endl << "- 3 : Spectate game" << endl;
-	int choice = 0;
-	while (choice != 1 && choice != 2 && choice != 3) {
-		cin >> choice;
-	}
-	switch(choice) {
-	case 1:
-		LaunchServer();
-		break;
-	case 2:
-		JoinServer();
-		break;
-	case 3:
-		SpectateGame();
-		break;
-	}
-}
 
-//-------------------------------------------------------------
-void ofApp::LaunchServer()
-{
-	isServer = true;
-	isClient = false;
-	isSpectator = false;
-
-	server = new Server();
-
-	playerTeam = true;
-	playerTurn = true;
-}
-
-//-------------------------------------------------------------
-void ofApp::JoinServer()
-{
-	isServer = false;
-	isClient = true;
-	isSpectator = false;
-
-	client = new Client(false);
-
-	playerTeam = false;
-	playerTurn = false;
-}
-
-//-------------------------------------------------------------
-void ofApp::SpectateGame()
-{
-	isServer = false;
-	isClient = true;
-	isSpectator = true;
-
-	client = new Client(true);
-}
-
-
-void ofApp::HandleBuffer(const std::string& _str)
+void ofApp::HandleBuffer(std::string& _str)
 {
 	switch(_str[0])
 	{
 	case '0': // message
-		break;
-	case '1': // start game
+		HandleMessage(_str);
 		break;
 	case '2': // move
 		HandleMove(_str);
 		break;
-	case '3': // invalid move
-		break;
-	case '4': // player turn
-		break;
 	case '5': // end
+		break;
+	case '6': // set game state
+		SetGameState(_str);
 		break;
 	}
 }
 
 
-void ofApp::HandleMove(const std::string& _str)
+void ofApp::HandleMessage(std::string& _str)
+{
+	_str[0] = ' ';
+	cout << _str << endl;
+}
+
+
+void ofApp::HandleMove(std::string& _str)
 {
 	bool chessmanTeam;
 	if (_str[1] == '0')
@@ -202,9 +211,9 @@ void ofApp::HandleMove(const std::string& _str)
 	else
 		chessmanTeam = false;
 
-	int chessmanIndex = _str[2];
-	int x = _str[3];
-	int y = _str[4];
+	int chessmanIndex = _str[2] - 1;
+	int x = _str[3] - 1;
+	int y = _str[4] - 1;
 
 	MoveChessman(chessmanTeam, chessmanIndex, x, y);
 }
@@ -212,9 +221,27 @@ void ofApp::HandleMove(const std::string& _str)
 
 void ofApp::InitChessmen()
 {
+	chessmenWhites.push_back(Chessman(1, 4, 7, true));
+	chessmenWhites.push_back(Chessman(2, 3, 7, true));
+	chessmenWhites.push_back(Chessman(3, 0, 7, true));
+	chessmenWhites.push_back(Chessman(3, 7, 7, true));
+	chessmenWhites.push_back(Chessman(4, 1, 7, true));
+	chessmenWhites.push_back(Chessman(4, 6, 7, true));
+	chessmenWhites.push_back(Chessman(5, 2, 7, true));
+	chessmenWhites.push_back(Chessman(5, 5, 7, true));
+
+	chessmenBlacks.push_back(Chessman(1, 4, 0, false));
+	chessmenBlacks.push_back(Chessman(2, 3, 0, false));
+	chessmenBlacks.push_back(Chessman(3, 0, 0, false));
+	chessmenBlacks.push_back(Chessman(3, 7, 0, false));
+	chessmenBlacks.push_back(Chessman(4, 1, 0, false));
+	chessmenBlacks.push_back(Chessman(4, 6, 0, false));
+	chessmenBlacks.push_back(Chessman(5, 2, 0, false));
+	chessmenBlacks.push_back(Chessman(5, 5, 0, false));
+
 	for (int i = 0; i < 8; ++i) {
-		chessmenWhites.push_back(Chessman(i, 7, true));
-		chessmenBlacks.push_back(Chessman(i, 0, false));
+		chessmenWhites.push_back(Chessman(0, i, 6, true));
+		chessmenBlacks.push_back(Chessman(0, i, 1, false));
 	}
 }
 
@@ -278,6 +305,15 @@ bool ofApp::GetTeamChessmanAtPosition(int x, int y, bool* team, int* index)
 
 bool ofApp::MoveSelectedChessman(int x, int y)
 {
+	if (playerTeam) {
+		if (!chessmenWhites[selectedChessman].CheckMove(x, y, &chessmenWhites, &chessmenBlacks))
+			return false;
+	}
+	else {
+		if (!chessmenBlacks[selectedChessman].CheckMove(x, y, &chessmenWhites, &chessmenBlacks))
+			return false;
+	}
+
 	bool team;
 	int index;
 	if (GetChessmanAtPosition(x, y, &team, &index)) {
@@ -319,10 +355,127 @@ void ofApp::MoveChessman(bool team, int index, int x, int y)
 		chessmenBlacks[index].y = y;
 	}
 
-	playerTurn = !(team == playerTeam);
-	if (playerTurn)
-		cout << "It's your turn" << endl;
-	else
-		cout << "Waiting opponent's move" << endl;
+	if (isServer)
+		server->SendMoveToSpectators(team, index, x, y);
+
+	bool end = false;
+
+	if (team) {
+		if (!chessmenBlacks[0].isAlive) {
+			end = true;
+			cout << "Whites win" << endl;
+		}
+	}
+	else {
+		if (!chessmenWhites[0].isAlive) {
+			end = true;
+			cout << "Blacks win" << endl;
+		}
+	}
+	if (!end) {
+		if (CheckCheck(true)) 
+			cout << "Whites is check" << endl;
+		if (CheckCheck(false)) 
+			cout << "Blacks is check" << endl;
+
+		if (!isSpectator) {
+			playerTurn = !(team == playerTeam);
+			if (playerTurn)
+				cout << "It's your turn" << endl;
+			else
+				cout << "Waiting opponent's move" << endl;
+		}
+		else
+			playerTurn = false;
+	}
 }
 
+
+void ofApp::SendGameStateToNewSpectator()
+{
+	string str = "6";
+	for (int i = 0; i < chessmenWhites.size(); ++i) {
+		if (chessmenWhites[i].isAlive) {
+			if (chessmenWhites[i].team)
+				str += "0";
+			else
+				str += "1";
+	
+			str += i + 1;
+			str += chessmenWhites[i].x + 1;
+			str += chessmenWhites[i].y + 1;
+		}
+	}
+	for (int i = 0; i < chessmenBlacks.size(); ++i) {
+		if (chessmenBlacks[i].isAlive) {
+			if (chessmenBlacks[i].team)
+				str += "0";
+			else
+				str += "1";
+	
+			str += i + 1;
+			str += chessmenBlacks[i].x + 1;
+			str += chessmenBlacks[i].y + 1;
+		}
+	}
+	server->SendToNewSpectator(str);
+}
+
+
+void ofApp::SetGameState(std::string& _str)
+{
+	for (int i = 0; i < chessmenWhites.size(); ++i)
+		chessmenWhites[i].isAlive = false;
+
+	for (int i = 0; i < chessmenBlacks.size(); ++i)
+		chessmenBlacks[i].isAlive = false;
+
+	int dataSize = (_str.size() - 1) / 4;
+	for (int i = 0; i < dataSize; ++i) {
+		int index = 1 + i * 4;
+		bool chessmanTeam;
+		if (_str[index] == '0')
+			chessmanTeam = true;
+		else 
+			chessmanTeam = false;
+
+		int chessmanIndex = _str[index+1] - 1;
+		int x = _str[index+2] - 1;
+		int y = _str[index+3] - 1;
+
+		SetChessman(chessmanTeam, chessmanIndex, x, y);
+	}
+}
+
+
+void ofApp::SetChessman(bool team, int index, int x, int y)
+{
+	if (team) {
+		chessmenWhites[index].isAlive = true;
+		chessmenWhites[index].x = x;
+		chessmenWhites[index].y = y;
+	}
+	else {
+		chessmenBlacks[index].isAlive = true;
+		chessmenBlacks[index].x = x;
+		chessmenBlacks[index].y = y;
+	}
+}
+
+
+bool ofApp::CheckCheck(bool roiTeam)
+{
+	if (roiTeam) {
+		for (int i = 0; i < chessmenBlacks.size(); ++i) {
+			if (chessmenBlacks[i].isAlive && chessmenBlacks[i].CheckMove(chessmenWhites[0].x, chessmenWhites[0].y, &chessmenWhites, &chessmenBlacks))
+				return true;
+		}
+	}
+	else {
+		for (int i = 0; i < chessmenWhites.size(); ++i) {
+			if (chessmenWhites[i].isAlive && chessmenWhites[i].CheckMove(chessmenBlacks[0].x, chessmenBlacks[0].y, &chessmenWhites, &chessmenBlacks))
+				return true;
+		}
+	}
+	return false;
+}

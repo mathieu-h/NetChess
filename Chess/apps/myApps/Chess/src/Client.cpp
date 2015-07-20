@@ -1,7 +1,7 @@
 #include "Client.h"
 
 
-Client::Client(bool isSpectator)
+Client::Client(bool isSpectator, std::string ip, int port)
 {
 	WSADATA wsaData;
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -18,7 +18,8 @@ Client::Client(bool isSpectator)
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 	
-	result = getaddrinfo(DEFAULT_ADDRESS , DEFAULT_PORT, &hints, &addrInfo);
+	std::string PORT = std::to_string(port);
+	result = getaddrinfo(ip.c_str() , PORT.c_str(), &hints, &addrInfo);
 	if (result != 0)
 		printf("getaddrinfo failed: %d\n", result);
 
@@ -99,9 +100,9 @@ void Client::SendMove(bool chessmanTeam, int chessmanIndex, int x, int y)
 	else
 		str += "1";
 	
-	str += chessmanIndex;
-	str += x;
-	str += y;
+	str += chessmanIndex + 1;
+	str += x + 1;
+	str += y + 1;
 
 	Send(str);
 }

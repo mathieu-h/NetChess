@@ -18,7 +18,7 @@ void BoardGame::draw()
 {
 	for(int i = 0; i < WIDTH; ++i) {
 		for(int j = 0; j < WIDTH; ++j) {
-			ofSetColor((i + j) % 2 ? ofColor::white : ofColor::black);
+			ofSetColor((i + j) % 2 ? ofColor(50) : ofColor(200));
 			backbround.draw(i * 100, j * 100);
 		}
 	}

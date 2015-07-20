@@ -6,15 +6,13 @@
 #include <WinSock2.h>
 #include <WS2tcpip.h>
 
-#define DEFAULT_ADDRESS "127.0.0.1"
-#define DEFAULT_PORT "27015"
 #define BUFFER_MAX 1024
 
 
 class Client
 {
 public:
-	Client(bool isSpectator);
+	Client(bool isSpectator, std::string ip, int port);
 	~Client(void);
 
 	void Update();

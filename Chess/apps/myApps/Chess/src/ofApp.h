@@ -10,6 +10,11 @@
 class ofApp : public ofBaseApp{
 
 	public:
+		void SetNetwork(int mode, string ip, int port);
+		void LaunchServer(int port);
+		void JoinServer(string ip, int port);
+		void SpectateGame(string ip, int port);
+
 		void setup();
 		void update();
 		void draw();
@@ -23,14 +28,11 @@ class ofApp : public ofBaseApp{
 		void windowResized(int w, int h);
 		void dragEvent(ofDragInfo dragInfo);
 		void gotMessage(ofMessage msg);
-		
-		void SelectMode();
-		void LaunchServer();
-		void JoinServer();
-		void SpectateGame();
 
-		void HandleBuffer(const std::string& _str);
-		void HandleMove(const std::string& _str);
+		void HandleBuffer(std::string& _str);
+		void HandleMessage(std::string& _str);
+		void HandleMove(std::string& _str);
+		void SetGameState(std::string& _str);
 
 		void InitChessmen();
 
@@ -39,6 +41,9 @@ class ofApp : public ofBaseApp{
 		bool GetTeamChessmanAtPosition(int x, int y, bool* team, int* index);
 		bool MoveSelectedChessman(int x, int y);
 		void MoveChessman(bool team, int index, int x, int y);
+		void SendGameStateToNewSpectator();
+		void SetChessman(bool team, int index, int x, int y);
+		bool CheckCheck(bool roiTeam);
 
 		bool isServer;
 		bool isClient;
@@ -54,6 +59,9 @@ class ofApp : public ofBaseApp{
 		bool playerTeam;
 
 		bool playerTurn;
+		bool gameStart;
 
 		int selectedChessman;
+
+		ofImage selectionImage;
 };

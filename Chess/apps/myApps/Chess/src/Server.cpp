@@ -1,10 +1,11 @@
 #include "Server.h"
 
 
-Server::Server(void)
+Server::Server(int port)
 {
 	socketServer = INVALID_SOCKET;
 	socketOpponent = INVALID_SOCKET;
+	opponentConnected = false;
 
 	WSADATA wsaData;
 	int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
@@ -17,7 +18,7 @@ Server::Server(void)
 
 	sockaddr_in addr;
 	addr.sin_addr.s_addr = INADDR_ANY;
-	addr.sin_port = htons(DEFAULT_PORT);
+	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
 	result = bind(socketServer, (sockaddr*)&addr, sizeof(addr));
 	if (result != 0)
@@ -77,7 +78,9 @@ void Server::OnUserConnected(SOCKET socket, const std::string& connectMode)
 	if (connectMode == "0") {
 		if (socketOpponent == INVALID_SOCKET) {
 			socketOpponent = socket;
+			opponentConnected = true;
 			printf("Opponent connected\n");
+			printf("It's your turn\n");
 		}
 		else {
 			DisconnetClient(socket, "players full");
@@ -87,6 +90,7 @@ void Server::OnUserConnected(SOCKET socket, const std::string& connectMode)
 	else if (connectMode == "1") {
 		if (socketSpectators.size() < SPECTATOR_MAX)  {
 			socketSpectators.push_back(socket);
+			socketNewSpectators.push_back(socket);
 			printf("Spectator connected\n");
 		}
 		else {
@@ -101,14 +105,22 @@ void Server::OnUserConnected(SOCKET socket, const std::string& connectMode)
 
 void Server::DisconnetClient(SOCKET socket, const std::string message)
 {
-	// send message
+	SendMessageTo(socket, message);
 	closesocket(socket);
 }
 
 
-void Server::Send(const std::string& _buffer)
+void Server::Send(SOCKET socket, const std::string& _buffer)
 {
-	send(socketOpponent, &(_buffer[0]), _buffer.length() + 1, 0);
+	send(socket, &(_buffer[0]), _buffer.length() + 1, 0);
+}
+
+
+void Server::SendMessageTo(SOCKET socket, const std::string message)
+{
+	std::string str = "0";
+	str+= message;
+	Send(socket, str);
 }
 
 
@@ -120,9 +132,34 @@ void Server::SendMove(bool chessmanTeam, int chessmanIndex, int x, int y)
 	else
 		str += "1";
 	
-	str += chessmanIndex;
-	str += x;
-	str += y;
+	str += chessmanIndex + 1;
+	str += x + 1;
+	str += y + 1;
 
-	Send(str);
+	Send(socketOpponent, str);
+}
+
+void Server::SendMoveToSpectators(bool chessmanTeam, int chessmanIndex, int x, int y)
+{
+	std::string str = "2";
+	if (chessmanTeam)
+		str += "0";
+	else
+		str += "1";
+	
+	str += chessmanIndex + 1;
+	str += x + 1;
+	str += y + 1;
+
+	for (int i = 0; i < socketSpectators.size(); ++i)
+		Send(socketSpectators[i], str);
+}
+
+
+void Server::SendToNewSpectator(const std::string& _buffer)
+{
+	for (int i = 0; i < socketNewSpectators.size(); ++i)
+		Send(socketNewSpectators[i], _buffer);
+
+	socketNewSpectators.clear();
 }
